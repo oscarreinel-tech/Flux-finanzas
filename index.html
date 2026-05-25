@@ -1,0 +1,786 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+  <meta name="theme-color" content="#0d1117"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="apple-mobile-web-app-title" content="FluxIA"/>
+  <title>FluxIA — Finanzas Familiares</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+    import { getDatabase, ref, onValue, set, remove } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-database.js";
+    const cfg = {
+      apiKey: "AIzaSyDvFVNG6OHzWXSb6_fsmEJbYz8IIUczK18",
+      authDomain: "flux-finanzas.firebaseapp.com",
+      databaseURL: "https://flux-finanzas-default-rtdb.firebaseio.com",
+      projectId: "flux-finanzas",
+      storageBucket: "flux-finanzas.firebasestorage.app",
+      messagingSenderId: "708665891547",
+      appId: "1:708665891547:web:ac84d6d62d1671bc22cafe"
+    };
+    const app = initializeApp(cfg);
+    const db = getDatabase(app);
+    window.__firebase = { db, ref, onValue, set, remove };
+  </script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0;}
+    body{background:#0d1117;font-family:'DM Sans','Segoe UI',sans-serif;color:#e8f4e8;}
+    @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-5px)}}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+    input:focus,textarea:focus,select:focus{outline:none;border-color:rgba(163,230,169,0.4)!important;}
+    ::-webkit-scrollbar{width:0;height:0;}
+    textarea,input,select,button{font-family:inherit;}
+  </style>
+</head>
+<body><div id="root"></div>
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+const BASE_CATS = [
+  {id:"alimentacion",label:"Alimentación",icon:"🛒",color:"#FF6B6B"},
+  {id:"transporte",label:"Transporte",icon:"🚗",color:"#4ECDC4"},
+  {id:"entretenimiento",label:"Entretenimiento",icon:"🎬",color:"#FFE66D"},
+  {id:"salud",label:"Salud",icon:"💊",color:"#A8E6CF"},
+  {id:"vivienda",label:"Vivienda",icon:"🏠",color:"#FF8B94"},
+  {id:"educacion",label:"Educación",icon:"📚",color:"#B8B8FF"},
+  {id:"ropa",label:"Ropa",icon:"👗",color:"#FFDAC1"},
+  {id:"otros",label:"Otros",icon:"💼",color:"#C7CEEA"},
+];
+const PALETTE=["#FF6B6B","#4ECDC4","#FFE66D","#A8E6CF","#FF8B94","#B8B8FF","#FFDAC1","#C7CEEA","#a3e6a9","#f9a8d4","#fcd34d","#6ee7b7","#93c5fd","#d8b4fe"];
+const ICONS=["🛒","🚗","🎬","💊","🏠","📚","👗","💼","🍔","☕","🐾","🎮","✈️","💇","🎁","⚽","🏋️","🧴","💡","🎓","🧒","🏖️","🎭","🐶","🎸","🌿","🎪","🎨"];
+const ML=["Ene","Feb","Mar","Abr","May","Jun","Jul","Ago","Sep","Oct","Nov","Dic"];
+
+function fmt(n){return "$"+Math.round(n).toLocaleString("es-CO");}
+function mk(d){return d?d.slice(0,7):"";}
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7);}
+function toMap(arr){const m={};arr.forEach(i=>{m[i.id]=i;});return m;}
+function lsGet(k,fb){try{const v=localStorage.getItem(k);return v?JSON.parse(v):fb;}catch{return fb;}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));}catch{}}
+
+function fbSet(path,val){const fb=window.__firebase;if(!fb)return Promise.reject("no fb");const{db,ref,set}=fb;return set(ref(db,path),val);}
+function fbRemove(path){const fb=window.__firebase;if(!fb)return;const{db,ref,remove}=fb;remove(ref(db,path));}
+function fbListen(path,cb){const fb=window.__firebase;if(!fb)return()=>{};const{db,ref,onValue}=fb;return onValue(ref(db,path),s=>cb(s.val()));}
+function fbOnce(path){return new Promise(res=>{const unsub=fbListen(path,v=>{unsub();res(v);});setTimeout(()=>{try{unsub();}catch{}res(null);},5000);});}
+
+// ── Charts ─────────────────────────────────────────────────────────────────
+function DonutChart({segments,size=110}){
+  const r=40,cx=60,cy=60,c=2*Math.PI*r;let o=0;
+  const t=segments.reduce((s,g)=>s+g.value,0);
+  return <svg width={size} height={size} viewBox="0 0 120 120">
+    <circle cx={cx} cy={cy} r={r} fill="none" stroke="#1a1f2e" strokeWidth={18}/>
+    {segments.map((seg,i)=>{const d=t>0?(seg.value/t)*c:0;const el=<circle key={i} cx={cx} cy={cy} r={r} fill="none" stroke={seg.color} strokeWidth={18} strokeDasharray={`${d} ${c-d}`} strokeDashoffset={-o} style={{transform:"rotate(-90deg)",transformOrigin:"60px 60px"}}/>;o+=d;return el;})}
+  </svg>;
+}
+
+function ProjectionChart({monthlyData,savingsTotal}){
+  const W=340,H=100;if(!monthlyData||!monthlyData.length)return null;
+  const avg=monthlyData.length>1?(monthlyData[monthlyData.length-1].balance-monthlyData[0].balance)/(monthlyData.length-1):monthlyData[0].balance*0.1;
+  const last=monthlyData[monthlyData.length-1];
+  const proj=Array.from({length:6},(_,i)=>{const[y,m]=last.monthKey.split("-").map(Number);const nm=((m-1+i+1)%12);const ny=y+Math.floor((m-1+i+1)/12);return{label:ML[nm]+" "+String(ny).slice(2),balance:last.balance+avg*(i+1),monthKey:`${ny}-${String(nm+1).padStart(2,"0")}`};});
+  const all=[...monthlyData,...proj];const vals=all.map(d=>d.balance+savingsTotal);
+  const minV=Math.min(...vals)*0.9,maxV=Math.max(...vals)*1.1,range=maxV-minV||1;
+  const toX=i=>all.length>1?(i/(all.length-1))*(W-20)+10:W/2;
+  const toY=v=>H-16-((v-minV)/range)*(H-30);
+  const ps=monthlyData.length-1;
+  return <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{overflow:"visible"}}>
+    {[0,0.5,1].map(f=><line key={f} x1={10} y1={toY(minV+f*range)} x2={W-10} y2={toY(minV+f*range)} stroke="rgba(255,255,255,0.04)" strokeWidth={1}/>)}
+    <polyline points={all.slice(ps).map((d,i)=>`${toX(ps+i)},${toY(d.balance+savingsTotal)}`).join(" ")} fill="none" stroke="rgba(78,205,196,0.35)" strokeWidth={2} strokeDasharray="4 3"/>
+    {monthlyData.length>1&&<polyline points={monthlyData.map((d,i)=>`${toX(i)},${toY(d.balance+savingsTotal)}`).join(" ")} fill="none" stroke="#a3e6a9" strokeWidth={2.5} strokeLinecap="round"/>}
+    {monthlyData.map((d,i)=><circle key={i} cx={toX(i)} cy={toY(d.balance+savingsTotal)} r={3.5} fill="#a3e6a9"/>)}
+    {proj.map((d,i)=><circle key={i} cx={toX(ps+i+1)} cy={toY(d.balance+savingsTotal)} r={3} fill="#4ECDC4" opacity={0.7}/>)}
+    {all.map((d,i)=>i%2===0?<text key={i} x={toX(i)} y={H-2} textAnchor="middle" fontSize={7} fill="#3a5a3a">{d.label}</text>:null)}
+  </svg>;
+}
+
+// ── Bubbles ────────────────────────────────────────────────────────────────
+function UserBubble({text,author}){
+  return <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10,gap:6,alignItems:"flex-end"}}>
+    <div style={{fontSize:9,color:"#3a5a3a",marginBottom:2}}>{author}</div>
+    <div style={{background:"linear-gradient(135deg,#2a4a2a,#1e3a2e)",border:"1px solid rgba(163,230,169,0.2)",borderRadius:"18px 18px 4px 18px",padding:"10px 14px",maxWidth:"72%",fontSize:14,color:"#e8f4e8",lineHeight:1.4,whiteSpace:"pre-wrap"}}>{text}</div>
+  </div>;
+}
+function BotBubble({children,loading}){
+  return <div style={{display:"flex",justifyContent:"flex-start",marginBottom:10,gap:8}}>
+    <div style={{width:28,height:28,borderRadius:"50%",flexShrink:0,background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#0d1117",fontWeight:800}}>✦</div>
+    <div style={{background:"#131920",border:"1px solid rgba(78,205,196,0.15)",borderRadius:"4px 18px 18px 18px",padding:"10px 14px",maxWidth:"80%",fontSize:13,color:"#c8e8c8",lineHeight:1.6,whiteSpace:"pre-wrap"}}>
+      {loading?<div style={{display:"flex",gap:5}}>{[0,1,2].map(i=><div key={i} style={{width:5,height:5,borderRadius:"50%",background:"#4ECDC4",animation:`bounce 1s ease-in-out ${i*0.2}s infinite`}}/>)}</div>:children}
+    </div>
+  </div>;
+}
+
+function ConfirmCard({transaction,categories,onConfirm,onCancel}){
+  const getCat=id=>categories.find(c=>c.id===id)||categories[categories.length-1];
+  const cat=getCat(transaction.category);
+  const[editing,setEditing]=useState(false);
+  const[ed,setEd]=useState({...transaction});
+  if(editing)return(
+    <div style={{background:"#1a2a1a",border:"1px solid rgba(163,230,169,0.2)",borderRadius:16,padding:14,marginBottom:4}}>
+      <div style={{fontSize:11,color:"#4ECDC4",marginBottom:8,fontWeight:600}}>EDITAR</div>
+      <div style={{display:"flex",gap:6,marginBottom:8}}>{["gasto","ingreso"].map(t=><button key={t} onClick={()=>setEd(e=>({...e,type:t}))} style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,background:ed.type===t?(t==="ingreso"?"#a3e6a9":"#FF6B6B"):"#1e2a1e",color:ed.type===t?"#0d1117":"#6b8f6b",fontWeight:600}}>{t==="ingreso"?"↑ Ingreso":"↓ Gasto"}</button>)}</div>
+      <input value={ed.description} onChange={e=>setEd(x=>({...x,description:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:8,padding:"8px 10px",color:"#e8f4e8",fontSize:13,marginBottom:8}}/>
+      <input type="number" value={ed.amount} onChange={e=>setEd(x=>({...x,amount:Number(e.target.value)}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:8,padding:"8px 10px",color:"#e8f4e8",fontSize:13,marginBottom:8}}/>
+      <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>{categories.map(c=><button key={c.id} onClick={()=>setEd(x=>({...x,category:c.id}))} style={{padding:"4px 8px",borderRadius:12,border:ed.category===c.id?`1px solid ${c.color}`:"1px solid transparent",background:ed.category===c.id?c.color+"25":"#1e2a1e",color:ed.category===c.id?c.color:"#6b8f6b",fontSize:11,cursor:"pointer"}}>{c.icon} {c.label}</button>)}</div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>onConfirm(ed)} style={{flex:1,padding:"8px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",color:"#0d1117",fontWeight:700,fontSize:13,cursor:"pointer"}}>✓ Guardar</button>
+        <button onClick={onCancel} style={{padding:"8px 12px",borderRadius:10,border:"1px solid #2a3a2a",background:"none",color:"#6b8f6b",fontSize:13,cursor:"pointer"}}>✕</button>
+      </div>
+    </div>
+  );
+  return(
+    <div style={{background:"#1a2a1a",border:"1px solid rgba(163,230,169,0.25)",borderRadius:16,padding:14,marginBottom:4}}>
+      <div style={{fontSize:11,color:"#4ECDC4",marginBottom:10,fontWeight:600}}>REGISTRAR MOVIMIENTO</div>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+        <div style={{width:38,height:38,borderRadius:10,background:cat.color+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{cat.icon}</div>
+        <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>{transaction.description}</div><div style={{fontSize:11,color:"#6b8f6b",marginTop:2}}>{cat.label} · {transaction.type==="ingreso"?"Ingreso":"Gasto"}</div></div>
+        <div style={{fontSize:18,fontWeight:800,color:transaction.type==="ingreso"?"#a3e6a9":"#FF6B6B"}}>{transaction.type==="ingreso"?"+":"-"}{fmt(transaction.amount)}</div>
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>onConfirm(transaction)} style={{flex:1,padding:"9px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",color:"#0d1117",fontWeight:700,fontSize:13,cursor:"pointer"}}>✓ Confirmar</button>
+        <button onClick={()=>setEditing(true)} style={{padding:"9px 12px",borderRadius:10,border:"1px solid #2a3a2a",background:"none",color:"#a3e6a9",fontSize:13,cursor:"pointer"}}>✎</button>
+        <button onClick={onCancel} style={{padding:"9px 12px",borderRadius:10,border:"1px solid #2a3a2a",background:"none",color:"#6b8f6b",fontSize:13,cursor:"pointer"}}>✕</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Onboarding ─────────────────────────────────────────────────────────────
+function Onboarding({onDone}){
+  const[step,setStep]=useState("welcome");
+  const[name,setName]=useState("");
+  const[houseName,setHouseName]=useState("");
+  const[joinCode,setJoinCode]=useState("");
+  const[loading,setLoading]=useState(false);
+  const[error,setError]=useState("");
+
+  const inp={width:"100%",background:"#131920",border:"1px solid #2a3a2a",borderRadius:12,padding:"12px 16px",color:"#e8f4e8",fontSize:14,marginBottom:12};
+  const btn={width:"100%",padding:"13px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",color:"#0d1117",fontWeight:700,fontSize:15,cursor:"pointer"};
+
+  async function createHousehold(){
+    if(!name.trim()||!houseName.trim())return;
+    setLoading(true);setError("");
+    const code=Math.random().toString(36).slice(2,8).toUpperCase();
+    const memberId=uid();
+    await fbSet(`households/${code}`,{id:code,name:houseName.trim(),createdAt:Date.now()});
+    await fbSet(`households/${code}/members/${memberId}`,{id:memberId,name:name.trim(),role:"admin",joinedAt:Date.now()});
+    lsSet("flux:user",name.trim());
+    lsSet("flux:memberId",memberId);
+    lsSet("flux:household",code);
+    lsSet("flux:houseName",houseName.trim());
+    lsSet("flux:role","admin");
+    setLoading(false);
+    onDone({userName:name.trim(),memberId,householdId:code,houseName:houseName.trim(),role:"admin"});
+  }
+
+  async function joinHousehold(){
+    if(!name.trim()||joinCode.length<6)return;
+    setLoading(true);setError("");
+    const code=joinCode.trim().toUpperCase();
+    const hName=await fbOnce(`households/${code}/name`);
+    if(!hName){setError("Código no encontrado. Verifica e intenta de nuevo.");setLoading(false);return;}
+    const memberId=uid();
+    await fbSet(`households/${code}/members/${memberId}`,{id:memberId,name:name.trim(),role:"member",joinedAt:Date.now()});
+    lsSet("flux:user",name.trim());
+    lsSet("flux:memberId",memberId);
+    lsSet("flux:household",code);
+    lsSet("flux:houseName",hName);
+    lsSet("flux:role","member");
+    setLoading(false);
+    onDone({userName:name.trim(),memberId,householdId:code,houseName:hName,role:"member"});
+  }
+
+  async function loginWithCode(){
+    if(!name.trim()||joinCode.length<6)return;
+    setLoading(true);setError("");
+    const code=joinCode.trim().toUpperCase();
+    const hName=await fbOnce(`households/${code}/name`);
+    if(!hName){setError("Código no encontrado.");setLoading(false);return;}
+    // look for existing member with same name
+    const members=await fbOnce(`households/${code}/members`)||{};
+    const existing=Object.values(members).find(m=>m.name.toLowerCase()===name.trim().toLowerCase());
+    const memberId=existing?existing.id:uid();
+    const role=existing?existing.role:"member";
+    if(!existing){
+      await fbSet(`households/${code}/members/${memberId}`,{id:memberId,name:name.trim(),role:"member",joinedAt:Date.now()});
+    }
+    lsSet("flux:user",name.trim());
+    lsSet("flux:memberId",memberId);
+    lsSet("flux:household",code);
+    lsSet("flux:houseName",hName);
+    lsSet("flux:role",role);
+    setLoading(false);
+    onDone({userName:name.trim(),memberId,householdId:code,houseName:hName,role});
+  }
+
+  if(step==="welcome")return(
+    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:28,animation:"fadeUp 0.5s ease"}}>
+      <div style={{fontSize:10,letterSpacing:4,color:"#4ECDC4",textTransform:"uppercase",marginBottom:8}}>Bienvenido a</div>
+      <div style={{fontSize:36,fontWeight:800,color:"#a3e6a9",marginBottom:6}}>FluxIA</div>
+      <div style={{fontSize:13,color:"#6b8f6b",marginBottom:40,textAlign:"center",lineHeight:1.7}}>Gestiona las finanzas de tu familia en tiempo real.</div>
+      <div style={{width:"100%",maxWidth:320,display:"flex",flexDirection:"column",gap:10}}>
+        <button onClick={()=>setStep("create")} style={btn}>✨ Crear mi hogar</button>
+        <button onClick={()=>setStep("join")} style={{...btn,background:"#131920",color:"#a3e6a9",border:"1px solid rgba(163,230,169,0.3)"}}>🔗 Unirme a un hogar nuevo</button>
+        <button onClick={()=>setStep("login")} style={{...btn,background:"#0d1117",color:"#4ECDC4",border:"1px solid rgba(78,205,196,0.3)"}}>🔑 Volver a mi hogar</button>
+      </div>
+    </div>
+  );
+
+  if(step==="create")return(
+    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",flexDirection:"column",padding:28,paddingTop:60}}>
+      <button onClick={()=>setStep("welcome")} style={{background:"none",border:"none",color:"#6b8f6b",fontSize:13,cursor:"pointer",marginBottom:24,textAlign:"left"}}>← Volver</button>
+      <div style={{fontSize:22,fontWeight:800,color:"#a3e6a9",marginBottom:6}}>Crear mi hogar</div>
+      <div style={{fontSize:12,color:"#6b8f6b",marginBottom:24,lineHeight:1.6}}>Se genera un código único para compartir con tu familia.</div>
+      <input value={name} onChange={e=>setName(e.target.value)} placeholder="Tu nombre (ej: Oscar)" style={inp}/>
+      <input value={houseName} onChange={e=>setHouseName(e.target.value)} placeholder="Nombre del hogar (ej: Familia Reinel)" style={inp}/>
+      {error&&<div style={{fontSize:12,color:"#FF6B6B",marginBottom:12}}>{error}</div>}
+      <button onClick={createHousehold} disabled={loading||!name.trim()||!houseName.trim()} style={{...btn,opacity:loading||!name.trim()||!houseName.trim()?0.5:1}}>{loading?"Creando...":"Crear hogar →"}</button>
+    </div>
+  );
+
+  if(step==="join")return(
+    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",flexDirection:"column",padding:28,paddingTop:60}}>
+      <button onClick={()=>setStep("welcome")} style={{background:"none",border:"none",color:"#6b8f6b",fontSize:13,cursor:"pointer",marginBottom:24,textAlign:"left"}}>← Volver</button>
+      <div style={{fontSize:22,fontWeight:800,color:"#a3e6a9",marginBottom:6}}>Unirme a un hogar</div>
+      <div style={{fontSize:12,color:"#6b8f6b",marginBottom:24,lineHeight:1.6}}>Pide el código al administrador del hogar.</div>
+      <input value={name} onChange={e=>setName(e.target.value)} placeholder="Tu nombre" style={inp}/>
+      <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())} placeholder="Código del hogar" style={{...inp,letterSpacing:4,fontWeight:700,fontSize:18,textAlign:"center"}} maxLength={6}/>
+      {error&&<div style={{fontSize:12,color:"#FF6B6B",marginBottom:12}}>{error}</div>}
+      <button onClick={joinHousehold} disabled={loading||!name.trim()||joinCode.length<6} style={{...btn,opacity:loading||!name.trim()||joinCode.length<6?0.5:1}}>{loading?"Buscando...":"Unirme →"}</button>
+    </div>
+  );
+
+  if(step==="login")return(
+    <div style={{minHeight:"100vh",background:"#0d1117",display:"flex",flexDirection:"column",padding:28,paddingTop:60}}>
+      <button onClick={()=>setStep("welcome")} style={{background:"none",border:"none",color:"#6b8f6b",fontSize:13,cursor:"pointer",marginBottom:24,textAlign:"left"}}>← Volver</button>
+      <div style={{fontSize:22,fontWeight:800,color:"#4ECDC4",marginBottom:6}}>Volver a mi hogar</div>
+      <div style={{fontSize:12,color:"#6b8f6b",marginBottom:24,lineHeight:1.6}}>Ingresa tu nombre y el código del hogar para continuar donde lo dejaste.</div>
+      <input value={name} onChange={e=>setName(e.target.value)} placeholder="Tu nombre (igual al que usaste)" style={inp}/>
+      <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())} placeholder="Código del hogar" style={{...inp,letterSpacing:4,fontWeight:700,fontSize:18,textAlign:"center"}} maxLength={6}/>
+      {error&&<div style={{fontSize:12,color:"#FF6B6B",marginBottom:12}}>{error}</div>}
+      <button onClick={loginWithCode} disabled={loading||!name.trim()||joinCode.length<6} style={{...btn,background:"linear-gradient(135deg,#4ECDC4,#93c5fd)",opacity:loading||!name.trim()||joinCode.length<6?0.5:1}}>{loading?"Verificando...":"Entrar →"}</button>
+    </div>
+  );
+}
+
+// ── Main App ───────────────────────────────────────────────────────────────
+function App(){
+  const[session,setSession]=useState(()=>{
+    const u=lsGet("flux:user",null),h=lsGet("flux:household",null);
+    const mid=lsGet("flux:memberId",null),hn=lsGet("flux:houseName",null),r=lsGet("flux:role","member");
+    return u&&h?{userName:u,householdId:h,houseName:hn||h,memberId:mid,role:r}:null;
+  });
+
+  const[transactions,setTransactions]=useState([]);
+  const[savings,setSavings]=useState([]);
+  const[customCats,setCustomCats]=useState([]);
+  const[members,setMembers]=useState([]);
+  const[budget,setBudget]=useState({});
+  const[reminders,setReminders]=useState([]);
+
+  const[tab,setTab]=useState("chat");
+  const[selMonth,setSelMonth]=useState(()=>{const n=new Date();return`${n.getFullYear()}-${String(n.getMonth()+1).padStart(2,"0")}`;});
+  const[showAdd,setShowAdd]=useState(false);
+  const[showAddSav,setShowAddSav]=useState(false);
+  const[showCats,setShowCats]=useState(false);
+  const[showCode,setShowCode]=useState(false);
+  const[showAddReminder,setShowAddReminder]=useState(false);
+  const[newAcc,setNewAcc]=useState({name:"",balance:""});
+  const[newCat,setNewCat]=useState({label:"",icon:"🎯",color:"#a3e6a9"});
+  const[newReminder,setNewReminder]=useState({name:"",amount:"",day:"1",category:"vivienda"});
+  const[form,setForm]=useState({type:"gasto",amount:"",description:"",category:"alimentacion",date:new Date().toISOString().slice(0,10)});
+  const[msgs,setMsgs]=useState([{id:"m0",role:"bot",text:"¡Hola! 👋 Registra gastos en lenguaje natural:\n• pizza 25000\n• taxi 18k\n• mercado 150.000\n• me pagaron 3.500.000\n\nTodos los cambios se sincronizan en tiempo real 🔄"}]);
+  const[chatInput,setChatInput]=useState("");
+  const[chatLoading,setChatLoading]=useState(false);
+  const chatEnd=useRef(null);
+
+  const hid=session?.householdId;
+  const isAdmin=session?.role==="admin";
+  const categories=[...BASE_CATS,...customCats];
+  const getCat=id=>categories.find(c=>c.id===id)||categories[categories.length-1];
+
+  useEffect(()=>{
+    if(!hid)return;
+    const unsubs=[
+      fbListen(`households/${hid}/transactions`,v=>{const arr=v?Object.values(v):[];setTransactions(arr.sort((a,b)=>(b.date||"").localeCompare(a.date||"")));}),
+      fbListen(`households/${hid}/savings`,v=>{setSavings(v?Object.values(v):[]);}),
+      fbListen(`households/${hid}/customCats`,v=>{setCustomCats(v?Object.values(v):[]);}),
+      fbListen(`households/${hid}/members`,v=>{setMembers(v?Object.values(v):[]);}),
+      fbListen(`households/${hid}/budget`,v=>{setBudget(v||{});}),
+      fbListen(`households/${hid}/reminders`,v=>{setReminders(v?Object.values(v):[]);}),
+    ];
+    return()=>unsubs.forEach(u=>u&&u());
+  },[hid]);
+
+  useEffect(()=>{chatEnd.current?.scrollIntoView({behavior:"smooth"});},[msgs]);
+
+  // Derived
+  const availMonths=[...new Set(transactions.map(t=>mk(t.date)))].sort().reverse();
+  const curTx=transactions.filter(t=>mk(t.date)===selMonth);
+  const totalIng=curTx.filter(t=>t.type==="ingreso").reduce((s,t)=>s+t.amount,0);
+  const totalGas=curTx.filter(t=>t.type==="gasto").reduce((s,t)=>s+t.amount,0);
+  const balance=totalIng-totalGas;
+  const ahorro=totalIng>0?Math.round((balance/totalIng)*100):0;
+  const byCat=categories.map(c=>({...c,total:curTx.filter(t=>t.type==="gasto"&&t.category===c.id).reduce((s,t)=>s+t.amount,0)})).filter(c=>c.total>0).sort((a,b)=>b.total-a.total);
+  const totalSav=savings.reduce((s,a)=>s+a.balance,0);
+  let cum=0;
+  const cumData=[...availMonths].reverse().map(m=>{
+    const txs=transactions.filter(t=>mk(t.date)===m);
+    const i=txs.filter(t=>t.type==="ingreso").reduce((s,t)=>s+t.amount,0);
+    const g=txs.filter(t=>t.type==="gasto").reduce((s,t)=>s+t.amount,0);
+    cum+=i-g;return{monthKey:m,label:ML[parseInt(m.slice(5))-1]+" "+m.slice(2,4),balance:cum};
+  });
+
+  function reminderStatus(r){
+    const today=new Date(),due=new Date(today.getFullYear(),today.getMonth(),r.day);
+    const diff=Math.ceil((due-today)/(1000*60*60*24));
+    if(diff<0)return{label:"Vencido",color:"#FF6B6B",urgent:true};
+    if(diff===0)return{label:"Hoy",color:"#FF6B6B",urgent:true};
+    if(diff<=3)return{label:`En ${diff} día${diff===1?"":"s"}`,color:"#FFE66D",urgent:true};
+    return{label:`Día ${r.day}`,color:"#6b8f6b",urgent:false};
+  }
+  const urgentCount=reminders.filter(r=>reminderStatus(r).urgent).length;
+
+  // Handlers
+  function addTx(tx){
+    const{tempId,...clean}=tx;
+    const n={...clean,id:uid(),author:session.userName,ts:Date.now()};
+    fbSet(`households/${hid}/transactions/${n.id}`,n)
+      .catch(e=>alert("Error Firebase: "+e.message+"\nVerifica las reglas de Realtime Database."));
+  }
+  function delTx(id){fbRemove(`households/${hid}/transactions/${id}`);}
+  function saveSav(upd){fbSet(`households/${hid}/savings`,upd.length?toMap(upd):{});}
+  function saveCats(upd){fbSet(`households/${hid}/customCats`,upd.length?toMap(upd):{});}
+  function saveBudget(upd){setBudget(upd);fbSet(`households/${hid}/budget`,upd);}
+  function saveReminders(upd){fbSet(`households/${hid}/reminders`,upd.length?toMap(upd):{});}
+
+  function addCat(){
+    if(!newCat.label.trim())return;
+    const c={id:"cat_"+uid(),label:newCat.label.trim(),icon:newCat.icon,color:newCat.color};
+    saveCats([...customCats,c]);setNewCat({label:"",icon:"🎯",color:"#a3e6a9"});
+  }
+  function addReminder(){
+    if(!newReminder.name.trim()||!newReminder.amount)return;
+    const r={id:uid(),name:newReminder.name.trim(),amount:parseFloat(newReminder.amount),day:parseInt(newReminder.day),category:newReminder.category};
+    saveReminders([...reminders,r]);setNewReminder({name:"",amount:"",day:"1",category:"vivienda"});setShowAddReminder(false);
+  }
+  function confirmTx(t){addTx(t);setMsgs(p=>p.map(m=>m.pendingTransaction?.tempId===t.tempId?{...m,confirmed:true,pendingTransaction:null,successText:`✅ ${t.description} · ${t.type==="ingreso"?"+":"-"}${fmt(t.amount)} guardado`}:m));}
+  function cancelTx(tid){setMsgs(p=>p.map(m=>m.pendingTransaction?.tempId===tid?{...m,cancelled:true,pendingTransaction:null,successText:"❌ Cancelado"}:m));}
+
+  function removeMember(id){
+    if(!isAdmin)return;
+    fbRemove(`households/${hid}/members/${id}`);
+  }
+  function promoteAdmin(member){
+    if(!isAdmin)return;
+    fbSet(`households/${hid}/members/${member.id}`,{...member,role:"admin"});
+  }
+
+  function leave(){localStorage.clear();setSession(null);}
+
+  async function sendChat(){
+    const text=chatInput.trim();if(!text||chatLoading)return;
+    setChatInput("");
+    setMsgs(p=>[...p,{id:uid(),role:"user",text,author:session.userName}]);
+    setChatLoading(true);const lid=uid();
+    setMsgs(p=>[...p,{id:lid,role:"bot",loading:true}]);
+    const catIds=categories.map(c=>c.id).join(",");
+    const res=`Mes:${selMonth}. Ingresos:${fmt(totalIng)},Gastos:${fmt(totalGas)},Balance:${fmt(balance)},Ahorro:${ahorro}%.`;
+    const sys=`Eres FluxIA. Datos: ${res}. IDs categorías disponibles: ${catIds}. DEVUELVE SOLO JSON sin markdown ni texto extra:\n- Si es un gasto o ingreso→{"action":"register","transaction":{"description":"nombre corto","amount":1234,"type":"gasto|ingreso","category":"id_exacto"},"reply":"mensaje corto"}\n- Si es una pregunta→{"action":"chat","reply":"respuesta con emojis"}\nReglas de monto: 15k=15000, 1.5M=1500000. SOLO el JSON.`;
+    try{
+      const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:sys,messages:[{role:"user",content:text}]})});
+      if(!r.ok){const err=await r.json().catch(()=>({}));throw new Error(`HTTP ${r.status}: ${err.error||r.statusText}`);}
+      const data=await r.json();
+      if(data.error)throw new Error(data.error);
+      const raw=data.content?.[0]?.text||"{}";
+      let parsed;try{parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());}catch{parsed={action:"chat",reply:"No entendí. Ej: 'almuerzo 18000'"};}
+      setMsgs(p=>p.filter(m=>m.id!==lid));
+      if(parsed.action==="register"&&parsed.transaction){
+        const tid=uid();
+        const day=String(new Date().getDate()).padStart(2,"0");
+        const t={...parsed.transaction,tempId:tid,date:`${selMonth}-${day}`};
+        setMsgs(p=>[...p,{id:uid(),role:"bot",text:parsed.reply},{id:uid(),role:"bot",pendingTransaction:t}]);
+      }else{setMsgs(p=>[...p,{id:uid(),role:"bot",text:parsed.reply}]);}
+    }catch(e){setMsgs(p=>p.filter(m=>m.id!==lid).concat({id:uid(),role:"bot",text:`⚠️ ${e.message}`}));}
+    setChatLoading(false);
+  }
+
+  function addManual(){
+    if(!form.amount||!form.description)return;
+    addTx({...form,amount:parseFloat(form.amount)});
+    setForm({type:"gasto",amount:"",description:"",category:"alimentacion",date:selMonth+"-01"});setShowAdd(false);
+  }
+
+  if(!session)return <Onboarding onDone={s=>{Object.entries({flux_user:s.userName,"flux:user":s.userName,"flux:memberId":s.memberId,"flux:household":s.householdId,"flux:houseName":s.houseName,"flux:role":s.role}).forEach(([k,v])=>lsSet(k,v));setSession(s);}}/>;
+
+  const TABS=[
+    {id:"chat",icon:"💬",label:"Chat"},
+    {id:"dashboard",icon:"◈",label:"Inicio"},
+    {id:"presupuesto",icon:"🎯",label:"Presupuesto"},
+    {id:"alertas",icon:"🔔",label:urgentCount>0?`🔔 ${urgentCount}`:"Alertas"},
+    {id:"movimientos",icon:"↕",label:"Gastos"},
+  ];
+
+  const card={background:"#131920",borderRadius:18,padding:"14px 16px",border:"1px solid rgba(255,255,255,0.05)"};
+
+  return(
+    <div style={{minHeight:"100vh",background:"#0d1117",color:"#e8f4e8",maxWidth:430,margin:"0 auto",position:"relative",overflowX:"hidden"}}>
+      <div style={{position:"fixed",top:-80,right:-80,width:260,height:260,borderRadius:"50%",background:"radial-gradient(circle,rgba(163,230,169,0.08) 0%,transparent 70%)",pointerEvents:"none"}}/>
+
+      {/* Header */}
+      <div style={{padding:"16px 16px 8px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{fontSize:10,letterSpacing:3,color:"#4ECDC4",textTransform:"uppercase",fontWeight:600}}>FluxIA</div>
+            <button onClick={()=>setShowCode(true)} style={{fontSize:9,color:"#a3e6a9",background:"rgba(163,230,169,0.1)",border:"1px solid rgba(163,230,169,0.2)",borderRadius:10,padding:"1px 7px",cursor:"pointer"}}>🏠 {session.houseName}</button>
+          </div>
+          <div style={{fontSize:16,fontWeight:700}}>
+            {tab==="chat"&&`Hola, ${session.userName} 👋`}
+            {tab==="dashboard"&&"Mi resumen"}
+            {tab==="presupuesto"&&"Presupuesto"}
+            {tab==="alertas"&&"Alertas de pago"}
+            {tab==="movimientos"&&"Movimientos"}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center"}}>
+          {(tab==="dashboard"||tab==="movimientos"||tab==="presupuesto")&&availMonths.length>0&&(
+            <select value={selMonth} onChange={e=>setSelMonth(e.target.value)} style={{background:"#131920",border:"1px solid #2a3a2a",borderRadius:8,color:"#a3e6a9",padding:"4px 6px",fontSize:10,cursor:"pointer"}}>
+              {availMonths.map(m=><option key={m} value={m}>{ML[parseInt(m.slice(5))-1]} {m.slice(0,4)}</option>)}
+              {!availMonths.includes(selMonth)&&<option value={selMonth}>{ML[parseInt(selMonth.slice(5))-1]} {selMonth.slice(0,4)}</option>}
+            </select>
+          )}
+          <button onClick={()=>setShowCats(true)} style={{width:32,height:32,borderRadius:"50%",border:"1px solid #2a3a2a",background:"#131920",color:"#a3e6a9",fontSize:14,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>🏷️</button>
+          <button onClick={()=>setShowAdd(true)} style={{width:34,height:34,borderRadius:"50%",border:"none",background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",color:"#0d1117",fontSize:20,cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center"}}>+</button>
+        </div>
+      </div>
+
+      <div style={{paddingBottom:85}}>
+
+        {/* ── CHAT ── */}
+        {tab==="chat"&&(
+          <div style={{display:"flex",flexDirection:"column",height:"calc(100vh - 140px)"}}>
+            <div style={{flex:1,overflowY:"auto",padding:"8px 16px 0"}}>
+              {msgs.map(msg=>(
+                <div key={msg.id}>
+                  {msg.role==="user"&&<UserBubble text={msg.text} author={msg.author||session.userName}/>}
+                  {msg.role==="bot"&&!msg.pendingTransaction&&<BotBubble loading={msg.loading}>{msg.successText||msg.text}</BotBubble>}
+                  {msg.role==="bot"&&msg.pendingTransaction&&(
+                    <div style={{marginBottom:10,paddingLeft:36}}>
+                      <ConfirmCard categories={categories} transaction={msg.pendingTransaction} onConfirm={confirmTx} onCancel={()=>cancelTx(msg.pendingTransaction.tempId)}/>
+                    </div>
+                  )}
+                </div>
+              ))}
+              <div ref={chatEnd}/>
+            </div>
+            <div style={{padding:"5px 16px 3px",display:"flex",gap:5,overflowX:"auto"}}>
+              {["pizza 25000","taxi 18k","mercado 85k","me pagaron 500k","colegio 200000"].map(s=>(
+                <button key={s} onClick={()=>setChatInput(s)} style={{flexShrink:0,background:"#131920",border:"1px solid #2a3a2a",borderRadius:16,padding:"4px 10px",fontSize:11,color:"#a3e6a9",cursor:"pointer",whiteSpace:"nowrap"}}>{s}</button>
+              ))}
+            </div>
+            <div style={{padding:"5px 16px 10px",display:"flex",gap:8}}>
+              <input value={chatInput} onChange={e=>setChatInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendChat()} placeholder="ej: almuerzo 18.000 o cómo voy este mes?" style={{flex:1,background:"#131920",border:"1px solid #2a3a2a",borderRadius:14,padding:"11px 14px",color:"#e8f4e8",fontSize:13}}/>
+              <button onClick={sendChat} disabled={chatLoading} style={{width:44,background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",border:"none",borderRadius:14,color:"#0d1117",fontSize:18,cursor:"pointer",opacity:chatLoading?0.5:1}}>→</button>
+            </div>
+          </div>
+        )}
+
+        {/* ── DASHBOARD ── */}
+        {tab==="dashboard"&&(
+          <div style={{padding:"0 16px"}}>
+            <div style={{background:"linear-gradient(135deg,#1a2a1a,#162422)",borderRadius:22,padding:"20px",marginBottom:12,border:"1px solid rgba(163,230,169,0.12)"}}>
+              <div style={{fontSize:10,color:"#a3e6a9",letterSpacing:2,textTransform:"uppercase",marginBottom:3}}>Balance {ML[parseInt(selMonth.slice(5))-1]} {selMonth.slice(0,4)}</div>
+              <div style={{fontSize:34,fontWeight:800,letterSpacing:-1,color:balance>=0?"#a3e6a9":"#FF6B6B"}}>{fmt(balance)}</div>
+              <div style={{display:"flex",gap:12,marginTop:14,flexWrap:"wrap"}}>
+                {[["↑ Ingresos",totalIng,"#a3e6a9"],["↓ Gastos",totalGas,"#FF6B6B"],["% Ahorro",ahorro+"%",ahorro>=20?"#a3e6a9":"#FFE66D"],["Patrimonio",totalSav+balance,"#4ECDC4"]].map(([l,v,c],i)=>(
+                  <div key={i}><div style={{fontSize:9,color:"#6b8f6b",marginBottom:2}}>{l}</div><div style={{fontSize:13,fontWeight:600,color:c}}>{typeof v==="number"?fmt(v):v}</div></div>
+                ))}
+              </div>
+            </div>
+            <div style={{...card,marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontSize:11,color:"#a3e6a9",fontWeight:600}}>Por categoría</div>
+                {byCat.length>0&&<DonutChart segments={byCat.slice(0,6).map(c=>({value:c.total,color:c.color}))} size={50}/>}
+              </div>
+              {byCat.length===0&&<div style={{fontSize:12,color:"#3a5a3a",textAlign:"center",padding:"8px 0"}}>Sin gastos este mes</div>}
+              {byCat.slice(0,5).map(cat=>(
+                <div key={cat.id} style={{marginBottom:8}}>
+                  <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginBottom:3}}><span>{cat.icon} {cat.label}</span><span style={{fontWeight:600}}>{fmt(cat.total)}</span></div>
+                  <div style={{height:4,background:"#1e2a1e",borderRadius:2}}><div style={{height:"100%",width:`${totalGas>0?cat.total/totalGas*100:0}%`,background:cat.color,borderRadius:2}}/></div>
+                </div>
+              ))}
+            </div>
+            {/* Ahorros en dashboard */}
+            <div style={{...card,marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontSize:11,color:"#a3e6a9",fontWeight:600}}>Cuentas de ahorro</div>
+                <button onClick={()=>setShowAddSav(true)} style={{background:"rgba(163,230,169,0.1)",border:"1px solid rgba(163,230,169,0.2)",borderRadius:8,padding:"3px 9px",color:"#a3e6a9",fontSize:11,cursor:"pointer"}}>+ Agregar</button>
+              </div>
+              {savings.length===0&&<div style={{fontSize:12,color:"#3a5a3a"}}>Sin cuentas aún</div>}
+              {savings.map(acc=>(
+                <div key={acc.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}><div style={{width:8,height:8,borderRadius:"50%",background:acc.color}}/><span style={{fontSize:12}}>{acc.name}</span></div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{fontSize:13,fontWeight:700,color:acc.color}}>{fmt(acc.balance)}</span>
+                    <button onClick={()=>saveSav(savings.filter(a=>a.id!==acc.id))} style={{background:"none",border:"none",color:"#2a3a2a",cursor:"pointer",fontSize:11}}>✕</button>
+                  </div>
+                </div>
+              ))}
+              {savings.length>0&&<div style={{borderTop:"1px solid rgba(255,255,255,0.05)",marginTop:8,paddingTop:8,display:"flex",justifyContent:"space-between"}}>
+                <span style={{fontSize:11,color:"#6b8f6b"}}>Total ahorrado</span>
+                <span style={{fontSize:14,fontWeight:800,color:"#4ECDC4"}}>{fmt(totalSav)}</span>
+              </div>}
+            </div>
+            {/* Proyección */}
+            <div style={{...card,border:"1px solid rgba(78,205,196,0.1)"}}>
+              <div style={{fontSize:11,color:"#4ECDC4",fontWeight:600,marginBottom:4}}>Proyección de patrimonio</div>
+              <div style={{fontSize:10,color:"#3a5a3a",marginBottom:10}}>Línea sólida = real · Punteada = proyección</div>
+              {cumData.length>0?<ProjectionChart monthlyData={cumData} savingsTotal={totalSav}/>:<div style={{fontSize:12,color:"#3a5a3a",textAlign:"center",padding:"16px 0"}}>Registra movimientos para ver la proyección</div>}
+              {cumData.length>0&&(()=>{
+                const last=cumData[cumData.length-1];
+                const avg=cumData.length>1?(last.balance-cumData[0].balance)/(cumData.length-1):last.balance*0.1;
+                return <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginTop:12}}>
+                  {[["3 meses",totalSav+last.balance+avg*3],["6 meses",totalSav+last.balance+avg*6],["12 meses",totalSav+last.balance+avg*12]].map(([l,v])=>(
+                    <div key={l} style={{background:"#1a2a2a",borderRadius:12,padding:"10px 8px",textAlign:"center",border:"1px solid rgba(78,205,196,0.1)"}}>
+                      <div style={{fontSize:9,color:"#4a7a8a",marginBottom:4}}>{l}</div>
+                      <div style={{fontSize:12,fontWeight:700,color:"#4ECDC4"}}>{fmt(v)}</div>
+                    </div>
+                  ))}
+                </div>;
+              })()}
+            </div>
+          </div>
+        )}
+
+        {/* ── PRESUPUESTO ── */}
+        {tab==="presupuesto"&&(
+          <div style={{padding:"0 16px"}}>
+            <div style={{fontSize:11,color:"#6b8f6b",marginBottom:14}}>Los gastos del chat y movimientos se reflejan aquí automáticamente.</div>
+            {categories.map(cat=>{
+              const gastado=curTx.filter(t=>t.type==="gasto"&&t.category===cat.id).reduce((s,t)=>s+t.amount,0);
+              const limite=budget[cat.id]||0;
+              const pct=limite>0?Math.min(gastado/limite*100,100):gastado>0?100:0;
+              const over=gastado>limite&&limite>0;
+              return(
+                <div key={cat.id} style={{background:"#131920",borderRadius:14,padding:"12px 14px",marginBottom:8,border:`1px solid ${over?"rgba(255,107,107,0.3)":"rgba(255,255,255,0.04)"}`}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <span style={{fontSize:13}}>{cat.icon} {cat.label}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:5}}>
+                      <span style={{fontSize:11,color:over?"#FF6B6B":"#6b8f6b"}}>{fmt(gastado)} /</span>
+                      <input type="number" value={budget[cat.id]||""} onChange={e=>saveBudget({...budget,[cat.id]:Number(e.target.value)||0})}
+                        placeholder="Límite" style={{width:90,background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:6,color:"#e8f4e8",padding:"2px 6px",fontSize:11,textAlign:"right"}}/>
+                    </div>
+                  </div>
+                  <div style={{height:5,background:"#1a2a1a",borderRadius:3,overflow:"hidden"}}>
+                    <div style={{height:"100%",width:pct+"%",background:over?"#FF6B6B":pct>80?"#FFE66D":cat.color,borderRadius:3,transition:"width 0.5s"}}/>
+                  </div>
+                  {over&&<div style={{fontSize:10,color:"#FF6B6B",marginTop:3}}>⚠ Excediste por {fmt(gastado-limite)}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── ALERTAS ── */}
+        {tab==="alertas"&&(
+          <div style={{padding:"0 16px"}}>
+            {reminders.filter(r=>reminderStatus(r).urgent).length>0&&(
+              <div style={{background:"rgba(255,107,107,0.08)",border:"1px solid rgba(255,107,107,0.25)",borderRadius:16,padding:"12px 14px",marginBottom:14}}>
+                <div style={{fontSize:11,color:"#FF6B6B",fontWeight:600,marginBottom:8}}>⚠ REQUIEREN ATENCIÓN</div>
+                {reminders.filter(r=>reminderStatus(r).urgent).map(r=>{
+                  const s=reminderStatus(r);const cat=getCat(r.category);
+                  return <div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <span style={{fontSize:13}}>{cat.icon} {r.name}</span>
+                    <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:"#FF6B6B"}}>{fmt(r.amount)}</div><div style={{fontSize:10,color:s.color}}>{s.label}</div></div>
+                  </div>;
+                })}
+              </div>
+            )}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+              <div style={{fontSize:11,color:"#a3e6a9",fontWeight:600}}>Pagos recurrentes</div>
+              <button onClick={()=>setShowAddReminder(true)} style={{background:"rgba(163,230,169,0.1)",border:"1px solid rgba(163,230,169,0.2)",borderRadius:8,padding:"4px 10px",color:"#a3e6a9",fontSize:11,cursor:"pointer"}}>+ Agregar</button>
+            </div>
+            {reminders.length===0&&<div style={{fontSize:13,color:"#3a5a3a",textAlign:"center",padding:"30px 0"}}>Sin recordatorios.<br/>Agrega tus pagos fijos del mes.</div>}
+            {reminders.map(r=>{
+              const s=reminderStatus(r);const cat=getCat(r.category);
+              return(
+                <div key={r.id} style={{background:"#131920",borderRadius:14,padding:"12px 14px",marginBottom:8,border:`1px solid ${s.urgent?"rgba(255,214,0,0.2)":"rgba(255,255,255,0.04)"}`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10}}>
+                    <div style={{width:36,height:36,borderRadius:10,background:cat.color+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{cat.icon}</div>
+                    <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{r.name}</div><div style={{fontSize:10,color:"#3a5a3a",marginTop:1}}>Cada mes · día {r.day}</div></div>
+                    <div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:700}}>{fmt(r.amount)}</div><div style={{fontSize:10,color:s.color,marginTop:1}}>{s.label}</div></div>
+                    <button onClick={()=>saveReminders(reminders.filter(x=>x.id!==r.id))} style={{background:"none",border:"none",color:"#2a3a2a",cursor:"pointer",fontSize:12}}>✕</button>
+                  </div>
+                </div>
+              );
+            })}
+            {reminders.length>0&&<div style={{...card,marginTop:4}}>
+              <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                <span style={{color:"#6b8f6b"}}>Total compromisos mensuales</span>
+                <span style={{fontWeight:700,color:"#FF6B6B"}}>{fmt(reminders.reduce((s,r)=>s+r.amount,0))}</span>
+              </div>
+            </div>}
+          </div>
+        )}
+
+        {/* ── MOVIMIENTOS ── */}
+        {tab==="movimientos"&&(
+          <div style={{padding:"0 16px"}}>
+            <div style={{fontSize:11,color:"#6b8f6b",marginBottom:10}}>{curTx.length} transacciones · {ML[parseInt(selMonth.slice(5))-1]} {selMonth.slice(0,4)}</div>
+            {curTx.length===0&&<div style={{fontSize:13,color:"#3a5a3a",textAlign:"center",padding:"30px 0"}}>Sin movimientos este mes.</div>}
+            {curTx.map(t=>{
+              const cat=getCat(t.category);
+              return <div key={t.id} style={{background:"#131920",borderRadius:14,padding:"12px 14px",marginBottom:8,display:"flex",alignItems:"center",gap:10,border:"1px solid rgba(255,255,255,0.04)"}}>
+                <div style={{width:36,height:36,borderRadius:10,background:cat.color+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{cat.icon}</div>
+                <div style={{flex:1}}><div style={{fontSize:13,fontWeight:600}}>{t.description}</div><div style={{fontSize:10,color:"#3a5a3a",marginTop:1}}>{cat.label} · {t.date}{t.author&&<span style={{color:"#4a6a4a"}}> · {t.author}</span>}</div></div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:14,fontWeight:700,color:t.type==="ingreso"?"#a3e6a9":"#FF6B6B"}}>{t.type==="ingreso"?"+":"-"}{fmt(t.amount)}</div>
+                  <button onClick={()=>delTx(t.id)} style={{background:"none",border:"none",color:"#2a3a2a",cursor:"pointer",fontSize:10}}>✕</button>
+                </div>
+              </div>;
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* Bottom Nav */}
+      <div style={{position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:430,background:"rgba(13,17,23,0.96)",backdropFilter:"blur(20px)",borderTop:"1px solid rgba(255,255,255,0.06)",display:"flex",padding:"10px 0 18px"}}>
+        {TABS.map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,background:"none",border:"none",cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,color:tab===t.id?"#a3e6a9":"#3a5a3a"}}>
+            <span style={{fontSize:14}}>{t.icon}</span>
+            <span style={{fontSize:8,fontWeight:tab===t.id?700:400,textAlign:"center",lineHeight:1.2}}>{t.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Modal: Info hogar + miembros */}
+      {showCode&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.8)",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200,padding:20}} onClick={()=>setShowCode(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#131920",borderRadius:24,padding:"28px 22px",width:"100%",maxWidth:340,border:"1px solid rgba(163,230,169,0.2)",maxHeight:"85vh",overflowY:"auto"}}>
+            <div style={{textAlign:"center",marginBottom:20}}>
+              <div style={{fontSize:12,color:"#6b8f6b",marginBottom:4}}>{session.houseName}</div>
+              <div style={{fontSize:10,color:"#4ECDC4",marginBottom:10}}>Código del hogar</div>
+              <div style={{fontSize:44,fontWeight:900,letterSpacing:8,color:"#a3e6a9",fontFamily:"monospace"}}>{session.householdId}</div>
+              <div style={{fontSize:11,color:"#6b8f6b",marginTop:8,lineHeight:1.6}}>Comparte este código para que tu familia se una.</div>
+              <button onClick={()=>navigator.clipboard?.writeText(session.householdId).catch(()=>{})} style={{marginTop:10,padding:"8px 20px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",color:"#0d1117",fontWeight:700,fontSize:13,cursor:"pointer"}}>Copiar código</button>
+            </div>
+
+            {/* Miembros */}
+            <div style={{borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:16,marginBottom:16}}>
+              <div style={{fontSize:11,color:"#4ECDC4",fontWeight:600,marginBottom:12}}>MIEMBROS DEL HOGAR</div>
+              {members.map(m=>(
+                <div key={m.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,background:"#1a2a1a",borderRadius:12,padding:"10px 12px"}}>
+                  <div style={{width:32,height:32,borderRadius:"50%",background:m.role==="admin"?"rgba(163,230,169,0.2)":"rgba(78,205,196,0.15)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{m.role==="admin"?"👑":"👤"}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600}}>{m.name}{m.id===session.memberId&&<span style={{fontSize:10,color:"#4ECDC4",marginLeft:6}}>(tú)</span>}</div>
+                    <div style={{fontSize:10,color:"#3a5a3a",marginTop:1}}>{m.role==="admin"?"Administrador":"Miembro"}</div>
+                  </div>
+                  {isAdmin&&m.id!==session.memberId&&(
+                    <div style={{display:"flex",gap:6}}>
+                      {m.role!=="admin"&&<button onClick={()=>promoteAdmin(m)} style={{background:"rgba(163,230,169,0.1)",border:"1px solid rgba(163,230,169,0.2)",borderRadius:7,padding:"3px 7px",color:"#a3e6a9",fontSize:10,cursor:"pointer"}}>Admin</button>}
+                      <button onClick={()=>{if(confirm(`¿Eliminar a ${m.name} del hogar?`))removeMember(m.id);}} style={{background:"rgba(255,107,107,0.1)",border:"1px solid rgba(255,107,107,0.2)",borderRadius:7,padding:"3px 7px",color:"#FF6B6B",fontSize:10,cursor:"pointer"}}>✕</button>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <button onClick={()=>{if(confirm("¿Salir del hogar? Tu sesión se cerrará."))leave();}} style={{width:"100%",padding:"10px",borderRadius:12,border:"1px solid #2a3a2a",background:"none",color:"#6b8f6b",fontSize:12,cursor:"pointer"}}>Salir del hogar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Categorías */}
+      {showCats&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:150}} onClick={()=>setShowCats(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#131920",borderRadius:"22px 22px 0 0",padding:"22px 20px 36px",width:"100%",maxWidth:430,border:"1px solid rgba(163,230,169,0.15)",maxHeight:"88vh",overflowY:"auto"}}>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>🏷️ Categorías</div>
+            <div style={{fontSize:11,color:"#6b8f6b",marginBottom:14}}>Las categorías base no se pueden eliminar.</div>
+            <div style={{fontSize:10,color:"#4ECDC4",fontWeight:600,marginBottom:8,letterSpacing:1}}>BASE</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+              {BASE_CATS.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:5,background:c.color+"20",border:`1px solid ${c.color}40`,borderRadius:20,padding:"5px 10px"}}><span>{c.icon}</span><span style={{fontSize:11,color:c.color}}>{c.label}</span></div>)}
+            </div>
+            {customCats.length>0&&<>
+              <div style={{fontSize:10,color:"#a3e6a9",fontWeight:600,marginBottom:8,letterSpacing:1}}>PERSONALIZADAS</div>
+              <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:14}}>
+                {customCats.map(c=><div key={c.id} style={{display:"flex",alignItems:"center",gap:5,background:c.color+"20",border:`1px solid ${c.color}40`,borderRadius:20,padding:"5px 10px"}}><span>{c.icon}</span><span style={{fontSize:11,color:c.color}}>{c.label}</span><button onClick={()=>saveCats(customCats.filter(x=>x.id!==c.id))} style={{background:"none",border:"none",color:c.color,cursor:"pointer",fontSize:12}}>✕</button></div>)}
+              </div>
+            </>}
+            <div style={{fontSize:10,color:"#a3e6a9",fontWeight:600,marginBottom:10,letterSpacing:1}}>CREAR NUEVA</div>
+            <input placeholder="Nombre (ej: Mascotas, Streaming...)" value={newCat.label} onChange={e=>setNewCat(c=>({...c,label:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:10,padding:"10px 14px",color:"#e8f4e8",fontSize:13,marginBottom:10}}/>
+            <div style={{marginBottom:10}}><div style={{fontSize:10,color:"#6b8f6b",marginBottom:6}}>Ícono:</div><div style={{display:"flex",flexWrap:"wrap",gap:5}}>{ICONS.map(ic=><button key={ic} onClick={()=>setNewCat(c=>({...c,icon:ic}))} style={{width:34,height:34,borderRadius:8,border:newCat.icon===ic?"2px solid #a3e6a9":"1px solid #2a3a2a",background:newCat.icon===ic?"rgba(163,230,169,0.15)":"#1e2a1e",fontSize:16,cursor:"pointer"}}>{ic}</button>)}</div></div>
+            <div style={{marginBottom:14}}><div style={{fontSize:10,color:"#6b8f6b",marginBottom:6}}>Color:</div><div style={{display:"flex",flexWrap:"wrap",gap:6}}>{PALETTE.map(col=><button key={col} onClick={()=>setNewCat(c=>({...c,color:col}))} style={{width:26,height:26,borderRadius:"50%",border:newCat.color===col?"3px solid #e8f4e8":"2px solid transparent",background:col,cursor:"pointer"}}/>)}</div></div>
+            <button onClick={addCat} style={{width:"100%",padding:"12px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",color:"#0d1117",fontWeight:700,fontSize:14,cursor:"pointer"}}>Crear categoría {newCat.icon}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Nueva cuenta ahorro */}
+      {showAddSav&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:100}} onClick={()=>setShowAddSav(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#131920",borderRadius:"22px 22px 0 0",padding:"22px 20px 36px",width:"100%",maxWidth:430,border:"1px solid rgba(78,205,196,0.15)"}}>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:16}}>Nueva cuenta de ahorro</div>
+            <input placeholder="Nombre (ej: CDT Bancolombia)" value={newAcc.name} onChange={e=>setNewAcc(a=>({...a,name:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:10,padding:"11px 14px",color:"#e8f4e8",fontSize:13,marginBottom:10}}/>
+            <input type="number" placeholder="Saldo actual" value={newAcc.balance} onChange={e=>setNewAcc(a=>({...a,balance:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:10,padding:"11px 14px",color:"#e8f4e8",fontSize:14,marginBottom:16}}/>
+            <button onClick={()=>{
+              if(!newAcc.name||!newAcc.balance)return;
+              const cols=["#a3e6a9","#4ECDC4","#FFE66D","#FF8B94","#B8B8FF"];
+              saveSav([...savings,{id:uid(),name:newAcc.name,balance:parseFloat(newAcc.balance),color:cols[savings.length%cols.length]}]);
+              setNewAcc({name:"",balance:""});setShowAddSav(false);
+            }} style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",color:"#0d1117",fontWeight:700,fontSize:14,cursor:"pointer"}}>Guardar cuenta</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Nuevo movimiento */}
+      {showAdd&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:100}} onClick={()=>setShowAdd(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#131920",borderRadius:"22px 22px 0 0",padding:"22px 20px 36px",width:"100%",maxWidth:430,border:"1px solid rgba(163,230,169,0.12)",maxHeight:"90vh",overflowY:"auto"}}>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:14}}>Nuevo movimiento</div>
+            <div style={{display:"flex",gap:8,marginBottom:10}}>{["gasto","ingreso"].map(tipo=><button key={tipo} onClick={()=>setForm(f=>({...f,type:tipo}))} style={{flex:1,padding:"9px",borderRadius:10,border:"none",cursor:"pointer",background:form.type===tipo?(tipo==="ingreso"?"#a3e6a9":"#FF6B6B"):"#1e2a1e",color:form.type===tipo?"#0d1117":"#6b8f6b",fontWeight:600,fontSize:12}}>{tipo==="ingreso"?"↑ Ingreso":"↓ Gasto"}</button>)}</div>
+            <input type="number" placeholder="Monto" value={form.amount} onChange={e=>setForm(f=>({...f,amount:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:10,padding:"11px 14px",color:"#e8f4e8",fontSize:14,marginBottom:8}}/>
+            <input type="text" placeholder="Descripción" value={form.description} onChange={e=>setForm(f=>({...f,description:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:10,padding:"11px 14px",color:"#e8f4e8",fontSize:13,marginBottom:8}}/>
+            <input type="date" value={form.date} onChange={e=>setForm(f=>({...f,date:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:10,padding:"11px 14px",color:"#e8f4e8",fontSize:13,marginBottom:10}}/>
+            <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:12}}>{categories.map(cat=><button key={cat.id} onClick={()=>setForm(f=>({...f,category:cat.id}))} style={{padding:"5px 9px",borderRadius:16,border:form.category===cat.id?`1px solid ${cat.color}60`:"1px solid transparent",background:form.category===cat.id?cat.color+"25":"#1e2a1e",color:form.category===cat.id?cat.color:"#6b8f6b",fontSize:11,cursor:"pointer"}}>{cat.icon} {cat.label}</button>)}</div>
+            <button onClick={addManual} style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",color:"#0d1117",fontWeight:700,fontSize:14,cursor:"pointer"}}>Guardar</button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Nuevo recordatorio */}
+      {showAddReminder&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",backdropFilter:"blur(4px)",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:100}} onClick={()=>setShowAddReminder(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#131920",borderRadius:"22px 22px 0 0",padding:"22px 20px 36px",width:"100%",maxWidth:430,border:"1px solid rgba(255,214,0,0.15)"}}>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>🔔 Nuevo recordatorio</div>
+            <div style={{fontSize:11,color:"#6b8f6b",marginBottom:16}}>La app te avisará cuando se acerque la fecha de pago.</div>
+            <input placeholder="Nombre (ej: Arriendo, Netflix, Gym...)" value={newReminder.name} onChange={e=>setNewReminder(r=>({...r,name:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:10,padding:"11px 14px",color:"#e8f4e8",fontSize:13,marginBottom:10}}/>
+            <input type="number" placeholder="Monto" value={newReminder.amount} onChange={e=>setNewReminder(r=>({...r,amount:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:10,padding:"11px 14px",color:"#e8f4e8",fontSize:14,marginBottom:10}}/>
+            <div style={{display:"flex",gap:10,marginBottom:14}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:10,color:"#6b8f6b",marginBottom:6}}>Día del mes:</div>
+                <select value={newReminder.day} onChange={e=>setNewReminder(r=>({...r,day:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:10,padding:"10px 12px",color:"#e8f4e8",fontSize:13,cursor:"pointer"}}>
+                  {Array.from({length:28},(_,i)=><option key={i+1} value={i+1}>Día {i+1}</option>)}
+                </select>
+              </div>
+              <div style={{flex:2}}>
+                <div style={{fontSize:10,color:"#6b8f6b",marginBottom:6}}>Categoría:</div>
+                <select value={newReminder.category} onChange={e=>setNewReminder(r=>({...r,category:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:10,padding:"10px 12px",color:"#e8f4e8",fontSize:13,cursor:"pointer"}}>
+                  {categories.map(c=><option key={c.id} value={c.id}>{c.icon} {c.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <button onClick={addReminder} style={{width:"100%",padding:"13px",borderRadius:12,border:"none",background:"linear-gradient(135deg,#FFE66D,#FF8B94)",color:"#0d1117",fontWeight:700,fontSize:14,cursor:"pointer"}}>Guardar recordatorio 🔔</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
