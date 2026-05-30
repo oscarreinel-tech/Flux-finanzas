@@ -43,7 +43,7 @@ module.exports = async function handler(req, res) {
     }
   });
  
-  const path = `/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+  const path = `/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
  
   return new Promise((resolve) => {
     const options = {
