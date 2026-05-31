@@ -124,7 +124,15 @@ function ConfirmCard({transaction,categories,onConfirm,onCancel}){
       <div style={{display:"flex",gap:6,marginBottom:8}}>{["gasto","ingreso"].map(t=><button key={t} onClick={()=>setEd(e=>({...e,type:t}))} style={{flex:1,padding:"6px",borderRadius:8,border:"none",cursor:"pointer",fontSize:12,background:ed.type===t?(t==="ingreso"?"#a3e6a9":"#FF6B6B"):"#1e2a1e",color:ed.type===t?"#0d1117":"#6b8f6b",fontWeight:600}}>{t==="ingreso"?"↑ Ingreso":"↓ Gasto"}</button>)}</div>
       <input value={ed.description} onChange={e=>setEd(x=>({...x,description:e.target.value}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:8,padding:"8px 10px",color:"#e8f4e8",fontSize:13,marginBottom:8}}/>
       <input type="number" value={ed.amount} onChange={e=>setEd(x=>({...x,amount:Number(e.target.value)}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:8,padding:"8px 10px",color:"#e8f4e8",fontSize:13,marginBottom:8}}/>
-      <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:10}}>{categories.map(c=><button key={c.id} onClick={()=>setEd(x=>({...x,category:c.id}))} style={{padding:"4px 8px",borderRadius:12,border:ed.category===c.id?`1px solid ${c.color}`:"1px solid transparent",background:ed.category===c.id?c.color+"25":"#1e2a1e",color:ed.category===c.id?c.color:"#6b8f6b",fontSize:11,cursor:"pointer"}}>{c.icon} {c.label}</button>)}</div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:5,marginBottom:8}}>{categories.map(c=><button key={c.id} onClick={()=>setEd(x=>({...x,category:c.id}))} style={{padding:"4px 8px",borderRadius:12,border:ed.category===c.id?`1px solid ${c.color}`:"1px solid transparent",background:ed.category===c.id?c.color+"25":"#1e2a1e",color:ed.category===c.id?c.color:"#6b8f6b",fontSize:11,cursor:"pointer"}}>{c.icon} {c.label}</button>)}</div>
+      {ed.type==="gasto"&&<label style={{display:"flex",alignItems:"center",gap:8,fontSize:12,cursor:"pointer",marginBottom:ed.creditCard?8:10}}>
+        <input type="checkbox" checked={!!ed.creditCard} onChange={e=>setEd(x=>({...x,creditCard:e.target.checked,payMonth:e.target.checked?x.payMonth:null}))} style={{accentColor:"#FFE66D"}}/>
+        <span style={{color:"#FFE66D"}}>💳 Tarjeta de crédito</span>
+      </label>}
+      {ed.creditCard&&<div style={{marginBottom:10}}>
+        <div style={{fontSize:10,color:"#6b8f6b",marginBottom:4}}>Mes de pago:</div>
+        <input type="month" value={ed.payMonth||""} onChange={e=>setEd(x=>({...x,payMonth:e.target.value||null}))} style={{width:"100%",background:"#1e2a1e",border:"1px solid #2a3a2a",borderRadius:8,padding:"6px 10px",color:"#e8f4e8",fontSize:13}}/>
+      </div>}
       <div style={{display:"flex",gap:8}}>
         <button onClick={()=>onConfirm(ed)} style={{flex:1,padding:"8px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",color:"#0d1117",fontWeight:700,fontSize:13,cursor:"pointer"}}>✓ Guardar</button>
         <button onClick={onCancel} style={{padding:"8px 12px",borderRadius:10,border:"1px solid #2a3a2a",background:"none",color:"#6b8f6b",fontSize:13,cursor:"pointer"}}>✕</button>
@@ -132,13 +140,19 @@ function ConfirmCard({transaction,categories,onConfirm,onCancel}){
     </div>
   );
   return(
-    <div style={{background:"#1a2a1a",border:"1px solid rgba(163,230,169,0.25)",borderRadius:16,padding:14,marginBottom:4}}>
+    <div style={{background:"#1a2a1a",border:`1px solid ${transaction.creditCard?"rgba(255,230,100,0.3)":"rgba(163,230,169,0.25)"}`,borderRadius:16,padding:14,marginBottom:4}}>
       <div style={{fontSize:11,color:"#4ECDC4",marginBottom:10,fontWeight:600}}>REGISTRAR MOVIMIENTO</div>
-      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:transaction.creditCard?8:12}}>
         <div style={{width:38,height:38,borderRadius:10,background:cat.color+"20",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{cat.icon}</div>
-        <div style={{flex:1}}><div style={{fontSize:14,fontWeight:600}}>{transaction.description}</div><div style={{fontSize:11,color:"#6b8f6b",marginTop:2}}>{cat.label} · {transaction.type==="ingreso"?"Ingreso":"Gasto"}</div></div>
+        <div style={{flex:1}}>
+          <div style={{fontSize:14,fontWeight:600}}>{transaction.description}</div>
+          <div style={{fontSize:11,color:"#6b8f6b",marginTop:2}}>{cat.label} · {transaction.type==="ingreso"?"Ingreso":"Gasto"}</div>
+        </div>
         <div style={{fontSize:18,fontWeight:800,color:transaction.type==="ingreso"?"#a3e6a9":"#FF6B6B"}}>{transaction.type==="ingreso"?"+":"-"}{fmt(transaction.amount)}</div>
       </div>
+      {transaction.creditCard&&<div style={{background:"rgba(255,230,100,0.08)",border:"1px solid rgba(255,230,100,0.2)",borderRadius:10,padding:"7px 10px",marginBottom:12,fontSize:12,color:"#FFE66D"}}>
+        💳 Tarjeta de crédito · pago en <strong>{transaction.payMonth?ML[parseInt(transaction.payMonth.slice(5))-1]+" "+transaction.payMonth.slice(0,4):"próximo mes"}</strong>
+      </div>}
       <div style={{display:"flex",gap:8}}>
         <button onClick={()=>onConfirm(transaction)} style={{flex:1,padding:"9px",borderRadius:10,border:"none",background:"linear-gradient(135deg,#a3e6a9,#4ECDC4)",color:"#0d1117",fontWeight:700,fontSize:13,cursor:"pointer"}}>✓ Confirmar</button>
         <button onClick={()=>setEditing(true)} style={{padding:"9px 12px",borderRadius:10,border:"1px solid #2a3a2a",background:"none",color:"#a3e6a9",fontSize:13,cursor:"pointer"}}>✎</button>
@@ -417,8 +431,11 @@ function App(){
     setChatLoading(true);const lid=uid();
     setMsgs(p=>[...p,{id:lid,role:"bot",loading:true}]);
     const catIds=categories.map(c=>c.id).join(",");
-    const res=`Mes:${selMonth}. Ingresos:${fmt(totalIng)},Gastos:${fmt(totalGas)},Balance:${fmt(balance)},Ahorro:${ahorro}%.`;
-    const sys=`Eres FluxIA. Datos: ${res}. IDs categorías disponibles: ${catIds}. DEVUELVE SOLO JSON sin markdown ni texto extra:\n- Si es un gasto o ingreso→{"action":"register","transaction":{"description":"nombre corto","amount":1234,"type":"gasto|ingreso","category":"id_exacto"},"reply":"mensaje corto"}\n- Si es una pregunta→{"action":"chat","reply":"respuesta con emojis"}\nReglas de monto: 15k=15000, 1.5M=1500000. SOLO el JSON.`;
+    // Calculate next month for TC
+    const [y,m]=selMonth.split("-").map(Number);
+    const nextM=m===12?`${y+1}-01`:`${y}-${String(m+1).padStart(2,"0")}`;
+    const res=`Mes actual:${selMonth}. Ingresos:${fmt(totalIng)},Gastos:${fmt(totalGas)},Balance:${fmt(balance)}.`;
+    const sys=`Eres FluxIA, asistente financiero. ${res} IDs categorías: ${catIds}. DEVUELVE SOLO JSON sin markdown:\n- Movimiento→{"action":"register","transaction":{"description":"texto","amount":1234,"type":"gasto|ingreso","category":"id","creditCard":true|false,"payMonth":"YYYY-MM o null"},"reply":"msg corto"}\n- creditCard=true y payMonth="${nextM}" cuando el usuario menciona: TC, tarjeta de crédito, tarjeta, crédito, cuotas, lo pago después, o lo pagaré. Si no menciona TC, creditCard=false y payMonth=null.\n- Pregunta→{"action":"chat","reply":"respuesta"}\n- 15k=15000,1.5M=1500000. SOLO JSON.`;
     try{
       const r=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({system:sys,messages:[{role:"user",content:text}]})});
       if(!r.ok){const err=await r.json().catch(()=>({}));throw new Error(`HTTP ${r.status}: ${err.error||r.statusText}`);}
@@ -430,7 +447,7 @@ function App(){
       if(parsed.action==="register"&&parsed.transaction){
         const tid=uid();
         const day=String(new Date().getDate()).padStart(2,"0");
-        const t={...parsed.transaction,tempId:tid,date:`${selMonth}-${day}`};
+        const t={...parsed.transaction,tempId:tid,date:`${selMonth}-${day}`,creditCard:!!parsed.transaction.creditCard,payMonth:parsed.transaction.payMonth||null};
         setMsgs(p=>[...p,{id:uid(),role:"bot",text:parsed.reply},{id:uid(),role:"bot",pendingTransaction:t}]);
       }else{setMsgs(p=>[...p,{id:uid(),role:"bot",text:parsed.reply}]);}
     }catch(e){setMsgs(p=>p.filter(m=>m.id!==lid).concat({id:uid(),role:"bot",text:`⚠️ ${e.message}`}));}
